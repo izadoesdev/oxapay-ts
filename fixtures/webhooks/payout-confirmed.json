@@ -1,0 +1,13 @@
+{
+  "track_id": "fixture_payout_confirmed_0001",
+  "type": "payout",
+  "status": "Confirmed",
+  "tx_hash": "fixture-transaction-hash",
+  "address": "TFixtureAddressNotForUse",
+  "currency": "USDT",
+  "network": "TRC20",
+  "amount": 5,
+  "value": 5,
+  "date": 1700000000,
+  "description": "Synthetic SDK webhook fixture"
+}

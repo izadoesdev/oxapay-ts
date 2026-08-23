@@ -1,0 +1,88 @@
+{
+  "name": "oxapay-ts",
+  "version": "0.1.0",
+  "description": "A composable TypeScript client for the OxaPay v1 API.",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks.d.ts",
+      "import": "./dist/webhooks.js",
+      "default": "./dist/webhooks.js"
+    },
+    "./fetch": {
+      "types": "./dist/fetch.d.ts",
+      "import": "./dist/fetch.js",
+      "default": "./dist/fetch.js"
+    },
+    "./nextjs": {
+      "types": "./dist/nextjs.d.ts",
+      "import": "./dist/nextjs.js",
+      "default": "./dist/nextjs.js"
+    },
+    "./express": {
+      "types": "./dist/express.d.ts",
+      "import": "./dist/express.js",
+      "default": "./dist/express.js"
+    },
+    "./fastify": {
+      "types": "./dist/fastify.d.ts",
+      "import": "./dist/fastify.js",
+      "default": "./dist/fastify.js"
+    },
+    "./hono": {
+      "types": "./dist/hono.d.ts",
+      "import": "./dist/hono.js",
+      "default": "./dist/hono.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "docs",
+    "examples/webhooks/README.md",
+    "examples/webhooks/express/.env.example",
+    "examples/webhooks/express/package.json",
+    "examples/webhooks/express/src",
+    "examples/webhooks/express/tsconfig.json",
+    "examples/webhooks/fastify/.env.example",
+    "examples/webhooks/fastify/package.json",
+    "examples/webhooks/fastify/src",
+    "examples/webhooks/fastify/tsconfig.json",
+    "examples/webhooks/hono/.env.example",
+    "examples/webhooks/hono/package.json",
+    "examples/webhooks/hono/src",
+    "examples/webhooks/hono/tsconfig.json",
+    "examples/webhooks/nextjs-app-router/.env.local.example",
+    "examples/webhooks/nextjs-app-router/app",
+    "examples/webhooks/nextjs-app-router/next-env.d.ts",
+    "examples/webhooks/nextjs-app-router/package.json",
+    "examples/webhooks/nextjs-app-router/tsconfig.json"
+  ],
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "check": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit -p tsconfig.type-tests.json",
+    "check:package": "npm run build && tsc --noEmit -p tsconfig.package-consumer.json && node ./scripts/check-package.mjs && node --test ./tests/package-integration.mjs",
+    "fixtures:webhooks": "node ./scripts/build.mjs && node ./scripts/verify-webhook-fixtures.mjs",
+    "prepack": "npm run check && npm test && npm run check:package",
+    "sandbox:check": "node ./scripts/sandbox-smoke.mjs --check",
+    "sandbox:smoke": "node ./scripts/build.mjs && node ./scripts/sandbox-smoke.mjs",
+    "test": "bun test",
+    "test:integration": "npm run build && node --test ./tests/package-integration.mjs",
+    "test:watch": "bun test --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

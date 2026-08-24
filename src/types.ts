@@ -535,12 +535,6 @@ export type UnknownWebhookEvent = { type: string } & Record<string, unknown>;
 /** Includes unknown future event types for low-level integrations that prefer forward compatibility. */
 export type OxaPayWebhookEvent = KnownOxaPayWebhookEvent | UnknownWebhookEvent;
 
-/**
- * How a framework webhook adapter treats the payload after its HMAC has been
- * verified. Adapters validate OxaPay's documented event shapes by default.
- */
-export type OxaPayWebhookEventValidation = "known" | "passthrough";
-
 export interface OxaPayWebhookCredentials {
 	merchantApiKey?: string;
 	payoutApiKey?: string;

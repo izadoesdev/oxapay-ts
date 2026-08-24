@@ -27,14 +27,4 @@ export class PayoutResource {
 	list(query: PayoutHistoryQuery = {}, options?: OxaPayRequestOptions): Promise<OxaPayResponse<OxaPayPage<Payout>>> {
 		return this.client.request(routes.payout.list, withOxaPayQuery(query, options));
 	}
-
-	async *iterateHistory(query: PayoutHistoryQuery = {}, options?: OxaPayRequestOptions): AsyncGenerator<Payout> {
-		let page = query.page ?? 1;
-		while (true) {
-			const response = await this.list({ ...query, page }, options);
-			yield* response.data.list;
-			if (page >= response.data.meta.lastPage) return;
-			page += 1;
-		}
-	}
 }

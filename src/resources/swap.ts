@@ -37,14 +37,4 @@ export class SwapResource {
 	rate(input: SwapRateInput, options?: OxaPayRequestOptions): Promise<OxaPayResponse<SwapRate>> {
 		return this.client.request(routes.swap.rate, withOxaPayBody(input, options));
 	}
-
-	async *iterateHistory(query: SwapHistoryQuery = {}, options?: OxaPayRequestOptions): AsyncGenerator<Swap> {
-		let page = query.page ?? 1;
-		while (true) {
-			const response = await this.list({ ...query, page }, options);
-			yield* response.data.list;
-			if (page >= response.data.meta.lastPage) return;
-			page += 1;
-		}
-	}
 }

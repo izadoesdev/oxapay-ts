@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	OxaPay,
 	OxaPayWebhookParseError,
 	OxaPayWebhookSignatureError,
 } from "../src/index.js";
@@ -46,33 +45,6 @@ describe("OxaPay webhooks", () => {
 		).rejects.toBeInstanceOf(OxaPayWebhookSignatureError);
 	});
 
-	test("binds configured client credentials to the framework-free helper", async () => {
-		const body = '{"track_id":"track_1","status":"Paid","type":"invoice","amount":10,"value":10,"sent_value":10,"currency":"USDT","date":1}';
-		const signature = await signatureFor(body, "merchant-secret");
-		const api = new OxaPay({ merchantApiKey: "merchant-secret" });
-
-		await expect(api.webhooks.verify(body, { signature })).resolves.toEqual({ valid: true, verifiedWith: "merchant" });
-		await expect(api.webhooks.parse(body, { signature })).resolves.toMatchObject({
-			verifiedWith: "merchant",
-			data: { trackId: "track_1" },
-		});
-		await expect(api.webhooks.parseKnown(body, { signature })).resolves.toMatchObject({
-			verifiedWith: "merchant",
-			data: { trackId: "track_1", type: "invoice" },
-		});
-	});
-
-	test("does not let JavaScript callers override credentials bound to the client", async () => {
-		const body = '{"track_id":"track_1","status":"Paid","type":"invoice","amount":10,"value":10,"sent_value":10,"currency":"USDT","date":1}';
-		const api = new OxaPay({ merchantApiKey: "merchant-secret" });
-		const alternateSignature = await signatureFor(body, "alternate-secret");
-
-		await expect(api.webhooks.verify(body, {
-			signature: alternateSignature,
-			merchantApiKey: "alternate-secret",
-		} as never)).resolves.toEqual({ valid: false });
-	});
-
 	test("offers an explicit low-level parser for documented callback shapes", async () => {
 		const body = '{"track_id":"track_1","status":"Paid","type":"invoice","amount":10,"value":10,"sent_value":10,"currency":"USDT","date":1}';
 		const signature = await signatureFor(body, "merchant-secret");
@@ -92,6 +64,15 @@ describe("OxaPay webhooks", () => {
 		const unknownTypeSignature = await signatureFor(unknownType, "merchant-secret");
 		await expect(
 			parseAndVerifyKnownWebhook(unknownType, { signature: unknownTypeSignature, merchantApiKey: "merchant-secret" }),
+		).rejects.toBeInstanceOf(OxaPayWebhookParseError);
+
+		const payoutSignedMerchant = await signatureFor(body, "payout-secret");
+		await expect(
+			parseAndVerifyKnownWebhook(body, {
+				signature: payoutSignedMerchant,
+				merchantApiKey: "merchant-secret",
+				payoutApiKey: "payout-secret",
+			}),
 		).rejects.toBeInstanceOf(OxaPayWebhookParseError);
 	});
 });

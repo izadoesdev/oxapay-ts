@@ -76,7 +76,7 @@ function requestFor(body: string, signature = signatureFor(body)): Request {
 test(`delivers a signed webhook through the ${exampleName} example source`, async () => {
 	if (exampleName === "express") {
 		const { createApp } = await import("../examples/webhooks/express/src/app.ts");
-		const listener = await listen(createApp({ merchantApiKey }));
+		const listener = await listen(createApp(merchantApiKey));
 		try {
 			await assertWebhookResponses((body, signature) => fetch(`${listener.origin}/webhooks/oxapay`, {
 				method: "POST",
@@ -91,7 +91,7 @@ test(`delivers a signed webhook through the ${exampleName} example source`, asyn
 
 	if (exampleName === "fastify") {
 		const { createApp } = await import("../examples/webhooks/fastify/src/app.ts");
-		const app = createApp({ merchantApiKey });
+		const app = createApp(merchantApiKey);
 		await app.ready();
 		try {
 			await assertWebhookResponses(async (body, signature) => {
@@ -111,7 +111,7 @@ test(`delivers a signed webhook through the ${exampleName} example source`, asyn
 
 	if (exampleName === "hono") {
 		const { createApp } = await import("../examples/webhooks/hono/src/app.ts");
-		const app = createApp({ merchantApiKey });
+		const app = createApp(merchantApiKey);
 		await assertWebhookResponses((body, signature) => app.request(requestFor(body, signature)));
 		return;
 	}

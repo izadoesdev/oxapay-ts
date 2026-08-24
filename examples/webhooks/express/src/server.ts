@@ -1,13 +1,10 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
 
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Missing ${name}`);
-  return value;
-}
+const merchantApiKey = process.env.OXAPAY_MERCHANT_API_KEY?.trim();
+if (!merchantApiKey) throw new Error("Missing OXAPAY_MERCHANT_API_KEY");
 
-const app = createApp({ merchantApiKey: requiredEnv("OXAPAY_MERCHANT_API_KEY") });
+const app = createApp(merchantApiKey);
 
 const port = Number(process.env.PORT ?? 3000);
 app.listen(port, () => {

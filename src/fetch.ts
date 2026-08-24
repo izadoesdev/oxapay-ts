@@ -5,10 +5,6 @@ import type {
 	OxaPayFetchWebhookOptions,
 	OxaPayWebhookHandler,
 } from "./webhook-adapters.js";
-import type { KnownOxaPayWebhookEvent, OxaPayWebhookEvent } from "./types.js";
-
-type KnownFetchWebhookOptions = OxaPayFetchWebhookOptions & { eventValidation?: "known" };
-type PassthroughFetchWebhookOptions = OxaPayFetchWebhookOptions & { eventValidation: "passthrough" };
 
 /**
  * Creates a verified webhook handler for Fetch-compatible runtimes.
@@ -18,28 +14,14 @@ type PassthroughFetchWebhookOptions = OxaPayFetchWebhookOptions & { eventValidat
  */
 export function createWebhookHandler(
 	oxapay: OxaPay,
-	onEvent: OxaPayWebhookHandler<KnownOxaPayWebhookEvent>,
-	options?: KnownFetchWebhookOptions,
-): OxaPayFetchWebhookHandler<KnownOxaPayWebhookEvent>;
-/**
- * Receives a valid signed event without the SDK's documented-shape validation.
- * Supply a type only after validating that custom payload in your own handler.
- */
-export function createWebhookHandler<T extends OxaPayWebhookEvent = OxaPayWebhookEvent>(
-	oxapay: OxaPay,
-	onEvent: OxaPayWebhookHandler<T>,
-	options: PassthroughFetchWebhookOptions,
-): OxaPayFetchWebhookHandler<T>;
-export function createWebhookHandler(
-	oxapay: OxaPay,
-	onEvent: OxaPayWebhookHandler<never>,
+	onEvent: OxaPayWebhookHandler,
 	options: OxaPayFetchWebhookOptions = {},
-): OxaPayFetchWebhookHandler<never> {
+): OxaPayFetchWebhookHandler {
 	return createOxaPayFetchWebhookHandler(
-		oxapay.webhooks,
-		onEvent as OxaPayWebhookHandler<OxaPayWebhookEvent>,
+		() => oxapay.client.getWebhookCredentials(),
+		onEvent,
 		options,
-	) as OxaPayFetchWebhookHandler<never>;
+	);
 }
 
 export type {

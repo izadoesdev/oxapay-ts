@@ -65,26 +65,4 @@ export class PaymentResource {
 	acceptedCurrencies(options?: OxaPayRequestOptions): Promise<OxaPayResponse<{ list: string[] }>> {
 		return this.client.request(routes.payment.acceptedCurrencies, options);
 	}
-
-	/** Lazily walks all payment-history pages using OxaPay's documented pagination metadata. */
-	async *iterateHistory(query: PaymentHistoryQuery = {}, options?: OxaPayRequestOptions): AsyncGenerator<Payment> {
-		let page = query.page ?? 1;
-		while (true) {
-			const response = await this.list({ ...query, page }, options);
-			yield* response.data.list;
-			if (page >= response.data.meta.lastPage) return;
-			page += 1;
-		}
-	}
-
-	/** Lazily walks all static-address pages using OxaPay's documented pagination metadata. */
-	async *iterateStaticAddresses(query: StaticAddressListQuery = {}, options?: OxaPayRequestOptions): AsyncGenerator<StaticAddress> {
-		let page = query.page ?? 1;
-		while (true) {
-			const response = await this.listStaticAddresses({ ...query, page }, options);
-			yield* response.data.list;
-			if (page >= response.data.meta.lastPage) return;
-			page += 1;
-		}
-	}
 }

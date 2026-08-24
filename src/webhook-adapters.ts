@@ -4,54 +4,34 @@ import {
 	OxaPayWebhookPayloadTooLargeError,
 	OxaPayWebhookSignatureError,
 } from "./errors.js";
-import { assertKnownOxaPayWebhookEvent } from "./webhooks.js";
+import { parseAndVerifyKnownWebhook } from "./webhooks.js";
 import type {
 	KnownOxaPayWebhookEvent,
 	OxaPayRawBody,
-	OxaPayWebhookSignatureOptions,
-	OxaPayWebhookEvent,
-	OxaPayWebhookEventValidation,
+	OxaPayWebhookCredentials,
 	VerifiedWebhook,
 } from "./types.js";
 
 const webhookTextHeaders = { "content-type": "text/plain; charset=utf-8" };
 const defaultWebhookBodyLimit = 1_048_576;
 
-/** The small verification surface framework adapters need from an OxaPay client. */
-export interface OxaPayWebhookParser {
-	parse<T extends OxaPayWebhookEvent = OxaPayWebhookEvent>(
-		rawBody: OxaPayRawBody,
-		options: OxaPayWebhookSignatureOptions,
-	): Promise<VerifiedWebhook<T>>;
-}
+type WebhookCredentials = () => Promise<OxaPayWebhookCredentials>;
 
 /**
  * Receives a verified event in Fetch-compatible runtimes such as Next.js route handlers.
  * The original request body has already been consumed to verify its signature; use
  * `event.rawBody` when application code needs those exact bytes.
  */
-export type OxaPayWebhookHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent> = (
-	event: VerifiedWebhook<T>,
+export type OxaPayWebhookHandler = (
+	event: VerifiedWebhook<KnownOxaPayWebhookEvent>,
 	request: Request,
 ) => Response | void | Promise<Response | void>;
 
 /** A standard Fetch request handler for Next.js route handlers and edge runtimes. */
-export type OxaPayFetchWebhookHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent> = (
-	request: Request,
-) => Promise<Response>;
-
-/** Controls validation of the event payload after its HMAC is verified. */
-export interface OxaPayWebhookValidationOptions {
-	/**
-	 * Defaults to `"known"`, which checks OxaPay's documented merchant and
-	 * payout payload shapes. Use `"passthrough"` only when handling a future or
-	 * custom event type with your own runtime validation.
-	 */
-	eventValidation?: OxaPayWebhookEventValidation;
-}
+export type OxaPayFetchWebhookHandler = (request: Request) => Promise<Response>;
 
 /** Controls the maximum raw payload retained by Fetch-compatible webhook handlers. */
-export interface OxaPayFetchWebhookOptions extends OxaPayWebhookValidationOptions {
+export interface OxaPayFetchWebhookOptions {
 	/** Maximum payload size in bytes. Defaults to 1 MiB. */
 	bodyLimit?: number;
 }
@@ -82,25 +62,12 @@ function normalizedBodyLimit(value: number | undefined, name: string): number {
 	return bodyLimit;
 }
 
-function normalizedEventValidation(value: OxaPayWebhookEventValidation | undefined): OxaPayWebhookEventValidation {
-	const eventValidation = value ?? "known";
-	if (eventValidation !== "known" && eventValidation !== "passthrough") {
-		throw new OxaPayConfigurationError('OxaPay webhook eventValidation must be "known" or "passthrough"');
-	}
-	return eventValidation;
-}
-
-async function parseWebhook<T extends OxaPayWebhookEvent>(
-	webhooks: OxaPayWebhookParser,
+async function parseKnownWebhook(
+	getCredentials: WebhookCredentials,
 	rawBody: OxaPayRawBody,
-	options: OxaPayWebhookSignatureOptions,
-	eventValidation: OxaPayWebhookEventValidation,
-): Promise<VerifiedWebhook<T>> {
-	const event = await webhooks.parse<T>(rawBody, options);
-	if (eventValidation === "known") {
-		assertKnownOxaPayWebhookEvent(event as VerifiedWebhook<OxaPayWebhookEvent>);
-	}
-	return event;
+	signature: string | null | undefined,
+): Promise<VerifiedWebhook<KnownOxaPayWebhookEvent>> {
+	return parseAndVerifyKnownWebhook(rawBody, { ...(await getCredentials()), signature });
 }
 
 function declaredContentLength(request: Request): number | undefined {
@@ -153,33 +120,25 @@ async function rawBodyFromFetchRequest(request: Request, bodyLimit: number): Pro
 	}
 }
 
-/** Parses a verified standard Fetch request without exposing raw-body or header plumbing. */
-export async function parseOxaPayFetchWebhookRequest<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent>(
-	webhooks: OxaPayWebhookParser,
+async function parseFetchWebhookRequest(
+	getCredentials: WebhookCredentials,
 	request: Request,
-	options: OxaPayFetchWebhookOptions = {},
-): Promise<VerifiedWebhook<T>> {
-	const bodyLimit = normalizedBodyLimit(options.bodyLimit, "Fetch webhook bodyLimit");
-	const eventValidation = normalizedEventValidation(options.eventValidation);
+	bodyLimit: number,
+): Promise<VerifiedWebhook<KnownOxaPayWebhookEvent>> {
 	const signature = request.headers.get("hmac");
 	if (!signature) throw new OxaPayWebhookSignatureError("OxaPay webhook HMAC signature is missing");
-	return parseWebhook<T>(
-		webhooks,
-		await rawBodyFromFetchRequest(request, bodyLimit),
-		{ signature },
-		eventValidation,
-	);
+	return parseKnownWebhook(getCredentials, await rawBodyFromFetchRequest(request, bodyLimit), signature);
 }
 
-async function handleOxaPayFetchWebhook<T extends OxaPayWebhookEvent>(
-	webhooks: OxaPayWebhookParser,
+async function handleOxaPayFetchWebhook(
+	getCredentials: WebhookCredentials,
 	request: Request,
-	onEvent: OxaPayWebhookHandler<T>,
-	options: OxaPayFetchWebhookOptions,
+	onEvent: OxaPayWebhookHandler,
+	bodyLimit: number,
 ): Promise<Response> {
-	let event: VerifiedWebhook<T>;
+	let event: VerifiedWebhook<KnownOxaPayWebhookEvent>;
 	try {
-		event = await parseOxaPayFetchWebhookRequest<T>(webhooks, request, options);
+		event = await parseFetchWebhookRequest(getCredentials, request, bodyLimit);
 	} catch (error) {
 		const failureResponse = webhookFailureResponse(error);
 		if (failureResponse) return failureResponse;
@@ -190,16 +149,13 @@ async function handleOxaPayFetchWebhook<T extends OxaPayWebhookEvent>(
 }
 
 /** Creates the zero-plumbing Fetch/Next.js webhook handler. */
-export function createOxaPayFetchWebhookHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent>(
-	webhooks: OxaPayWebhookParser,
-	onEvent: OxaPayWebhookHandler<T>,
+export function createOxaPayFetchWebhookHandler(
+	getCredentials: WebhookCredentials,
+	onEvent: OxaPayWebhookHandler,
 	options: OxaPayFetchWebhookOptions = {},
-): OxaPayFetchWebhookHandler<T> {
-	const resolvedOptions: Required<OxaPayFetchWebhookOptions> = {
-		bodyLimit: normalizedBodyLimit(options.bodyLimit, "Fetch webhook bodyLimit"),
-		eventValidation: normalizedEventValidation(options.eventValidation),
-	};
-	return (request) => handleOxaPayFetchWebhook(webhooks, request, onEvent, resolvedOptions);
+): OxaPayFetchWebhookHandler {
+	const bodyLimit = normalizedBodyLimit(options.bodyLimit, "Fetch webhook bodyLimit");
+	return (request) => handleOxaPayFetchWebhook(getCredentials, request, onEvent, bodyLimit);
 }
 
 type OxaPayNodeHeaders = Record<string, string | readonly string[] | undefined>;
@@ -243,20 +199,17 @@ export interface OxaPayExpressResponse {
 export type OxaPayExpressNext = (error?: unknown) => void;
 
 /** A request handler that is structurally compatible with Express and Connect middleware. */
-export type OxaPayExpressWebhookHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent> = (
+export type OxaPayExpressWebhookHandler = (
 	request: OxaPayExpressRequest,
 	response: OxaPayExpressResponse,
 	next: OxaPayExpressNext,
 ) => void | Promise<void>;
 
-export type OxaPayExpressWebhookEventHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent> = (
-	event: VerifiedWebhook<T>,
+export type OxaPayExpressWebhookEventHandler = (
+	event: VerifiedWebhook<KnownOxaPayWebhookEvent>,
 	request: OxaPayExpressRequest,
 	response: OxaPayExpressResponse,
 ) => unknown | Promise<unknown>;
-
-/** Controls runtime event validation for Express webhook middleware. */
-export interface OxaPayExpressWebhookOptions extends OxaPayWebhookValidationOptions {}
 
 function headerFromExpressRequest(request: OxaPayExpressRequest): string | null {
 	const fromGetter = request.get?.("hmac");
@@ -301,20 +254,17 @@ function sendExpressText(response: OxaPayExpressResponse, statusCode: number, bo
  * Creates an Express/Connect handler. Mount `express.raw()` for this route before
  * `express.json()` so the adapter receives the exact signed bytes.
  */
-export function createOxaPayExpressWebhookHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent>(
-	webhooks: OxaPayWebhookParser,
-	onEvent: OxaPayExpressWebhookEventHandler<T>,
-	options: OxaPayExpressWebhookOptions = {},
-): OxaPayExpressWebhookHandler<T> {
-	const eventValidation = normalizedEventValidation(options.eventValidation);
+export function createOxaPayExpressWebhookHandler(
+	getCredentials: WebhookCredentials,
+	onEvent: OxaPayExpressWebhookEventHandler,
+): OxaPayExpressWebhookHandler {
 	return async (request, response, next) => {
-		let event: VerifiedWebhook<T>;
+		let event: VerifiedWebhook<KnownOxaPayWebhookEvent>;
 		try {
-			event = await parseWebhook<T>(
-				webhooks,
+			event = await parseKnownWebhook(
+				getCredentials,
 				rawBodyFromExpressRequest(request),
-				{ signature: headerFromExpressRequest(request) },
-				eventValidation,
+				headerFromExpressRequest(request),
 			);
 		} catch (error) {
 			if (isRejectedWebhook(error)) {
@@ -369,16 +319,15 @@ export interface OxaPayFastifyInstance {
 	): unknown;
 }
 
-export type OxaPayFastifyWebhookEventHandler<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent> = (
-	event: VerifiedWebhook<T>,
+export type OxaPayFastifyWebhookEventHandler = (
+	event: VerifiedWebhook<KnownOxaPayWebhookEvent>,
 	request: OxaPayFastifyRequest,
 	reply: OxaPayFastifyReply,
 ) => unknown | Promise<unknown>;
 
-export interface OxaPayFastifyWebhookOptions<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent>
-	extends OxaPayWebhookValidationOptions {
+export interface OxaPayFastifyWebhookOptions {
 	path: string;
-	handler: OxaPayFastifyWebhookEventHandler<T>;
+	handler: OxaPayFastifyWebhookEventHandler;
 	bodyLimit?: number;
 }
 
@@ -393,12 +342,11 @@ function sendFastifyText(reply: OxaPayFastifyReply, statusCode: number, body: st
  * Creates an encapsulated Fastify plugin. It changes JSON parsing only for this
  * route, leaving the application's normal JSON parser untouched.
  */
-export function createOxaPayFastifyWebhookPlugin<T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent>(
-	webhooks: OxaPayWebhookParser,
-	options: OxaPayFastifyWebhookOptions<T>,
+export function createOxaPayFastifyWebhookPlugin(
+	getCredentials: WebhookCredentials,
+	options: OxaPayFastifyWebhookOptions,
 ): OxaPayFastifyWebhookPlugin {
 	const bodyLimit = normalizedBodyLimit(options.bodyLimit, "Fastify webhook bodyLimit");
-	const eventValidation = normalizedEventValidation(options.eventValidation);
 
 	return (fastify) => {
 		fastify.addContentTypeParser(
@@ -407,13 +355,12 @@ export function createOxaPayFastifyWebhookPlugin<T extends OxaPayWebhookEvent = 
 			(_request, body, done) => done(null, body),
 		);
 		fastify.post(options.path, async (request, reply) => {
-			let event: VerifiedWebhook<T>;
+			let event: VerifiedWebhook<KnownOxaPayWebhookEvent>;
 			try {
-				event = await parseWebhook<T>(
-					webhooks,
+				event = await parseKnownWebhook(
+					getCredentials,
 					rawBodyFromValue(request.body, "OxaPay Fastify webhook plugin"),
-					{ signature: headerFromHeaders(request.headers, "hmac") },
-					eventValidation,
+					headerFromHeaders(request.headers, "hmac"),
 				);
 			} catch (error) {
 				if (isRejectedWebhook(error)) return sendFastifyText(reply, 400, "Invalid OxaPay webhook");
@@ -433,29 +380,26 @@ export interface OxaPayHonoContext {
 	readonly req: { readonly raw: Request };
 }
 
-export type OxaPayHonoWebhookEventHandler<
-	T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent,
-	Context extends OxaPayHonoContext = OxaPayHonoContext,
-> = (event: VerifiedWebhook<T>, context: Context) => Response | void | Promise<Response | void>;
+export type OxaPayHonoWebhookEventHandler<Context extends OxaPayHonoContext = OxaPayHonoContext> = (
+	event: VerifiedWebhook<KnownOxaPayWebhookEvent>,
+	context: Context,
+) => Response | void | Promise<Response | void>;
 
 export type OxaPayHonoWebhookHandler<Context extends OxaPayHonoContext = OxaPayHonoContext> = (
 	context: Context,
 ) => Promise<Response>;
 
 /** Creates a Hono handler backed by the same Fetch-native verification flow. */
-export function createOxaPayHonoWebhookHandler<
-	T extends OxaPayWebhookEvent = KnownOxaPayWebhookEvent,
-	Context extends OxaPayHonoContext = OxaPayHonoContext,
->(
-	webhooks: OxaPayWebhookParser,
-	onEvent: OxaPayHonoWebhookEventHandler<T, Context>,
+export function createOxaPayHonoWebhookHandler<Context extends OxaPayHonoContext = OxaPayHonoContext>(
+	getCredentials: WebhookCredentials,
+	onEvent: OxaPayHonoWebhookEventHandler<Context>,
 	options: OxaPayFetchWebhookOptions = {},
 ): OxaPayHonoWebhookHandler<Context> {
-	const resolvedOptions: Required<OxaPayFetchWebhookOptions> = {
-		bodyLimit: normalizedBodyLimit(options.bodyLimit, "Hono webhook bodyLimit"),
-		eventValidation: normalizedEventValidation(options.eventValidation),
-	};
-	return async (context) => {
-		return handleOxaPayFetchWebhook<T>(webhooks, context.req.raw, (event) => onEvent(event, context), resolvedOptions);
-	};
+	const bodyLimit = normalizedBodyLimit(options.bodyLimit, "Hono webhook bodyLimit");
+	return async (context) => handleOxaPayFetchWebhook(
+		getCredentials,
+		context.req.raw,
+		(event) => onEvent(event, context),
+		bodyLimit,
+	);
 }

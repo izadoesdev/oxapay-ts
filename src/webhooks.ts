@@ -1,11 +1,9 @@
 import { decodeOxaPayValue, isRecord } from "./codecs.js";
-import { OxaPayClient } from "./client.js";
 import { OxaPayConfigurationError, OxaPayWebhookParseError, OxaPayWebhookSignatureError } from "./errors.js";
 import { documentedMerchantWebhookTypes } from "./types.js";
 import type {
 	KnownOxaPayWebhookEvent,
 	OxaPayRawBody,
-	OxaPayWebhookSignatureOptions,
 	OxaPayWebhookEvent,
 	OxaPayWebhookVerification,
 	VerifiedWebhook,
@@ -163,7 +161,7 @@ function assertKnownPayoutWebhook(data: Record<string, unknown>): void {
  * matches the callback family, so a payout key cannot impersonate a merchant
  * callback when an endpoint holds both keys.
  */
-export function assertKnownOxaPayWebhookEvent(
+function assertKnownOxaPayWebhookEvent(
 	event: VerifiedWebhook<OxaPayWebhookEvent>,
 ): asserts event is VerifiedWebhook<KnownOxaPayWebhookEvent> {
 	const data = requiredRecord(event.data, "data");
@@ -250,35 +248,4 @@ export async function parseAndVerifyKnownWebhook(
 	const event = await parseAndVerifyWebhook(rawBody, options);
 	assertKnownOxaPayWebhookEvent(event);
 	return event;
-}
-
-/**
- * A webhook facade bound to credentials configured on an {@link OxaPay} client.
- * Use a framework-specific entrypoint such as `oxapay-ts/nextjs` or
- * `oxapay-ts/express` for application endpoints. {@link parse} and
- * {@link verify} are the low-level escape hatches for custom runtimes.
- */
-export class OxaPayWebhooks {
-	constructor(private readonly client: OxaPayClient) {}
-
-	/** Low-level raw-body verification using this client's configured credentials. */
-	async verify(rawBody: OxaPayRawBody, { signature }: OxaPayWebhookSignatureOptions): Promise<OxaPayWebhookVerification> {
-		return verifyWebhookSignature(rawBody, { ...(await this.client.getWebhookCredentials()), signature });
-	}
-
-	/** Low-level raw-body parsing using this client's configured credentials. */
-	async parse<T extends OxaPayWebhookEvent = OxaPayWebhookEvent>(
-		rawBody: OxaPayRawBody,
-		{ signature }: OxaPayWebhookSignatureOptions,
-	): Promise<VerifiedWebhook<T>> {
-		return parseAndVerifyWebhook<T>(rawBody, { ...(await this.client.getWebhookCredentials()), signature });
-	}
-
-	/** Low-level parsing and documented-shape validation using this client's credentials. */
-	async parseKnown(
-		rawBody: OxaPayRawBody,
-		{ signature }: OxaPayWebhookSignatureOptions,
-	): Promise<VerifiedWebhook<KnownOxaPayWebhookEvent>> {
-		return parseAndVerifyKnownWebhook(rawBody, { ...(await this.client.getWebhookCredentials()), signature });
-	}
 }

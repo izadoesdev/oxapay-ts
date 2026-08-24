@@ -36,42 +36,26 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Type-check source and public API
+      - name: Type-check source
         run: bun run check
 
       - name: Run tests
         run: bun test
 
       - name: Validate built package and subpath exports
-        run: bun run check:package
-
-      - name: Verify emitted webhook fixtures
-        run: npm run fixtures:webhooks
+        run: bun run test:package
 
       - name: Verify packed publish contents
         shell: bash
         run: |
           package_tarball="$PWD/$(npm pack --ignore-scripts --silent)"
-          package_files="${RUNNER_TEMP}/oxapay-package-files.txt"
           consumer_directory="$(mktemp -d)"
-          trap 'rm -rf "$package_tarball" "$package_files" "$consumer_directory"' EXIT
+          trap 'rm -rf "$package_tarball" "$consumer_directory"' EXIT
 
-          tar -tzf "$package_tarball" > "$package_files"
-
-          if grep --extended-regexp --quiet '^package/examples/.*/(node_modules|\.next)/' "$package_files"; then
-            echo "Generated example dependencies or build artifacts must not be published."
+          if tar -tzf "$package_tarball" | grep --quiet '^package/examples/'; then
+            echo "Runnable examples belong in the repository, not the published tarball."
             exit 1
           fi
-
-          for entrypoint in index webhooks fetch nextjs express fastify hono; do
-            for extension in js d.ts; do
-              grep --fixed-strings --quiet "package/dist/${entrypoint}.${extension}" "$package_files"
-            done
-          done
-
-          for required_file in README.md docs/sandbox.md docs/releasing.md examples/webhooks/README.md; do
-            grep --fixed-strings --quiet "package/${required_file}" "$package_files"
-          done
 
           (
             cd "$consumer_directory"
@@ -126,7 +110,7 @@ jobs:
         run: |
           bun run build
           test -f dist/index.js
-          test -f dist/index.d.ts
+          test -f dist/index.d.mts
 
       - name: Install declared example dependencies
         run: npm install --prefix "${{ matrix.path }}" --no-package-lock --no-audit --fund=false
